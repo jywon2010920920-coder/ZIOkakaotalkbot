@@ -38,7 +38,7 @@ _SEND_URL = f"{_BASE}/api/v1/open/chat"       # POST /{room_id}/message
 _PROFILE_FEED_TYPES: set[int] = {9, 15}
 
 # 로그인 시 순서대로 시도할 버전 목록
-_KT_VERSIONS = ["10.6.7", "10.5.5", "10.4.9", "10.4.4"]
+_KT_VERSIONS = ["11.1.0", "10.9.5", "10.8.3", "10.7.2", "10.6.7", "10.5.5"]
 
 
 class ProfileChangeListener:
