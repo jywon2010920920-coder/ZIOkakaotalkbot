@@ -37,6 +37,9 @@ _SEND_URL = f"{_BASE}/api/v1/open/chat"       # POST /{room_id}/message
 # (카카오톡 내부 값 — 업데이트 시 변경될 수 있음)
 _PROFILE_FEED_TYPES: set[int] = {9, 15}
 
+# 로그인 시 순서대로 시도할 버전 목록
+_KT_VERSIONS = ["10.6.7", "10.5.5", "10.4.9", "10.4.4"]
+
 
 class ProfileChangeListener:
     def __init__(self) -> None:
@@ -77,7 +80,6 @@ class ProfileChangeListener:
 
     async def _login(self) -> bool:
         pw_hash = hashlib.sha512(self._password.encode()).hexdigest()
-        headers = {"User-Agent": "KT/10.4.4 Wd/10.0 ko", "A": "win32/10.4.4/ko"}
         data = {
             "email": self._email,
             "password": pw_hash,
@@ -86,19 +88,36 @@ class ProfileChangeListener:
             "os_version": "10.0",
             "permanent": "1",
         }
-        async with self._session.post(_AUTH_URL, data=data, headers=headers) as resp:
-            body = await resp.json(content_type=None)
-            if body.get("status") == 0:
+        for ver in _KT_VERSIONS:
+            headers = {
+                "User-Agent": f"KT/{ver} Wd/10.0 ko",
+                "A": f"win32/{ver}/ko",
+                "Accept": "application/json",
+                "Content-Type": "application/x-www-form-urlencoded",
+            }
+            async with self._session.post(_AUTH_URL, data=data, headers=headers) as resp:
+                body = await resp.json(content_type=None)
+
+            status = body.get("status")
+            if status == 0:
                 self._access_token = body["access_token"]
+                self._headers_base = headers
+                logger.info("로그인 성공 (버전 %s)", ver)
                 return True
-            logger.error("로그인 응답: %s", body.get("message", body))
-            return False
+
+            msg = body.get("message", "")
+            logger.warning("버전 %s 로그인 실패: %s", ver, msg)
+
+            # 버전 문제가 아닌 오류면 더 시도하지 않음
+            if "버전" not in msg and "update" not in msg.lower():
+                break
+
+        logger.error("모든 버전으로 로그인 실패 — 이메일/비밀번호를 확인하세요.")
+        return False
 
     def _headers(self) -> dict:
-        return {
-            "Authorization": f"Bearer {self._access_token}",
-            "User-Agent": "KT/10.4.4 Wd/10.0 ko",
-        }
+        base = getattr(self, "_headers_base", {"User-Agent": "KT/10.6.7 Wd/10.0 ko"})
+        return {**base, "Authorization": f"Bearer {self._access_token}"}
 
     async def _poll(self) -> None:
         params: dict = {}
